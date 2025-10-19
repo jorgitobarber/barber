@@ -47,9 +47,38 @@ st.markdown(
 st.markdown(
     """
 <style>
-/* App base */
-.stApp { background-color: #0e1117 !important; color: #fafafa !important; }
+/* ====== BASE OSCURA GLOBAL ====== */
+:root { color-scheme: dark; }
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+  background-color: #0e1117 !important;
+  color: #fafafa !important;
+}
 .main { background-color: #0e1117 !important; padding-top: .5rem; }
+
+/* Forzar color claro en textos generales */
+h1, h2, h3, h4, h5, h6,
+p, span, label, legend,
+[data-testid="stMarkdownContainer"], .stMarkdown, .stCaption, .stText {
+  color: #e5e7eb !important;
+}
+
+/* Placeholders de inputs */
+::placeholder { color: #94a3b8 !important; opacity: .85; }
+
+/* Enlaces */
+a { color: #8ab4ff !important; }
+
+/* ====== SIDEBAR OSCURA (independiente del contenido) ====== */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #121826 0%, #0b1220 100%) !important;
+  border-right: 1px solid rgba(255,255,255,.08) !important;
+}
+[data-testid="stSidebar"] * {
+  color: #e5e7eb !important;
+}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong {
+  color: #ffffff !important;
+}
 
 /* HEADER (más pequeño y rectangular) */
 .header-container {
@@ -61,14 +90,12 @@ st.markdown(
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255,255,255,.08);
 }
-
 .hero-content {
   display: grid;
   grid-template-columns: 1.2fr .8fr;
   gap: 1rem;
   align-items: center;
 }
-
 .header-title {
   color: #fff;
   font-size: 1.6rem;
@@ -76,21 +103,14 @@ st.markdown(
   margin: 0;
   letter-spacing: .3px;
 }
-
 .header-subtitle {
   color: #b8c5d1;
   margin-top: .25rem;
   font-size: .95rem;
 }
-
-.hero-image {
-  display:flex; align-items:center; justify-content:flex-end;
-}
-
+.hero-image { display:flex; align-items:center; justify-content:flex-end; }
 .hero-image img {
-  height: 110px;
-  width: auto;
-  border-radius: 10px;
+  height: 110px; width: auto; border-radius: 10px;
   box-shadow: 0 6px 18px rgba(0,0,0,.45);
   border: 1px solid rgba(255,255,255,.08);
 }
@@ -104,13 +124,7 @@ st.markdown(
   .header-subtitle { text-align:center; }
 }
 
-/* Sidebar */
-.css-1d391kg, .css-1cypcdb, .css-17eq0hr {
-  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%) !important;
-  border-right: 1px solid rgba(255,255,255,.08) !important;
-}
-
-/* Inputs */
+/* ====== CONTROLES ====== */
 .stTextInput input, .stTextArea textarea,
 .stSelectbox [data-baseweb="select"], .stDateInput input,
 .stTimeInput input, .stNumberInput input {
@@ -119,6 +133,9 @@ st.markdown(
   border: 1px solid rgba(255,255,255,.18) !important;
   border-radius: 10px !important;
 }
+
+/* Radios / Checkboxes: texto claro */
+div[role="radiogroup"] > label, .stCheckbox > label { color: #e5e7eb !important; }
 
 /* Buttons */
 .stButton>button {
@@ -130,9 +147,7 @@ st.markdown(
   font-weight: 700 !important;
   box-shadow: 0 6px 18px rgba(102,126,234,.35) !important;
 }
-.stButton>button:hover {
-  transform: translateY(-1px);
-}
+.stButton>button:hover { transform: translateY(-1px); }
 
 /* Tabs */
 .stTabs [data-baseweb="tab"] {
@@ -149,10 +164,21 @@ st.markdown(
   background: linear-gradient(135deg, #1e2329 0%, #2a2f36 100%) !important;
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 12px; padding: .8rem;
+  color: #e5e7eb !important;
 }
 
-/* DataFrame */
+/* DataFrame / Tablas: texto claro */
+[data-testid="stDataFrame"] div, [data-testid="stTable"] * {
+  color: #e5e7eb !important;
+}
 .stDataFrame, .stTable { border-radius: 10px; }
+
+/* Alerts (info/warn/success/error) oscuros */
+div[data-testid="stAlert"] {
+  background: #141820 !important;
+  color: #e5e7eb !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+}
 
 /* Plotly bg */
 .js-plotly-plot { background: transparent !important; }
