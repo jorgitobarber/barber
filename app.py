@@ -1,14 +1,13 @@
-# app.py
 # Barbería — Registro/Resumen con métricas y gráficos
 # Tecnologías: Streamlit + SQLite + SQLAlchemy + Pandas + Plotly
 # Moneda: CLP
 
-import os
 import uuid
 import base64
 import enum
 import datetime as dt
 from datetime import datetime, date, timedelta
+from pathlib import Path
 import calendar
 
 import pandas as pd
@@ -166,6 +165,14 @@ div[role="radiogroup"] > label, .stCheckbox > label { color: #e5e7eb !important;
   border-radius: 12px; padding: .8rem;
   color: #e5e7eb !important;
 }
+[data-testid="metric-container"] [data-testid="stMetricValue"],
+[data-testid="metric-container"] [data-testid="stMetricValue"] > div,
+[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+  color: #f8fafc !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricDelta"] {
+  color: #cbd5f5 !important;
+}
 
 /* DataFrame / Tablas: texto claro */
 [data-testid="stDataFrame"] div, [data-testid="stTable"] * {
@@ -257,6 +264,12 @@ class AppConfig(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+MONTH_NAMES_ES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+]
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     seed_items()
@@ -339,11 +352,18 @@ init_db()
 # =========
 # Utilidades
 # =========
-def money(x: float) -> str:
+def money(value) -> str:
+    """Formatea cualquier número como CLP; devuelve "-" si no es válido."""
+    if value is None:
+        return "-"
     try:
-        return f"$ {int(round(x)):,}".replace(",", ".")
-    except:
-        return f"$ {x:,.0f}".replace(",", ".")
+        amount = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    try:
+        return f"$ {int(round(amount)):,}".replace(",", ".")
+    except Exception:
+        return f"$ {amount:,.0f}".replace(",", ".")
 
 
 def get_30min_intervals():
@@ -366,11 +386,7 @@ def apply_dark_theme(fig):
 
 
 def nombre_mes_es(m: int) -> str:
-    meses = [
-        "Enero","Febrero","Marzo","Abril","Mayo","Junio",
-        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
-    ]
-    return meses[m-1]
+    return MONTH_NAMES_ES[m - 1]
 
 
 def semanas_en_mes(year: int, month: int) -> int:
@@ -390,12 +406,11 @@ def semana_bucket_4(d: date) -> int:
        1: 1–7, 2: 8–14, 3: 15–21, 4: 22–fin."""
     if d.day <= 7:
         return 1
-    elif d.day <= 14:
+    if d.day <= 14:
         return 2
-    elif d.day <= 21:
+    if d.day <= 21:
         return 3
-    else:
-        return 4
+    return 4
 
 
 # ========
@@ -433,8 +448,8 @@ def get_df_sales(start: date = None, end: date = None) -> pd.DataFrame:
             if data
             else pd.DataFrame(
                 columns=[
-                    "id","ts","fecha","hora","cliente","item","tipo",
-                    "cantidad","precio_unit","descuento","total_linea","ticket_id","tip"
+                    "id", "ts", "fecha", "hora", "cliente", "item", "tipo",
+                    "cantidad", "precio_unit", "descuento", "total_linea", "ticket_id", "tip"
                 ]
             )
         )
@@ -463,7 +478,7 @@ def get_df_expenses(start: date = None, end: date = None) -> pd.DataFrame:
         return (
             pd.DataFrame(data)
             if data
-            else pd.DataFrame(columns=["id","ts","fecha","hora","categoria","nota","monto"])
+            else pd.DataFrame(columns=["id", "ts", "fecha", "hora", "categoria", "nota", "monto"])
         )
 
 
@@ -592,14 +607,16 @@ def get_grouped_sales(start: date = None, end: date = None):
 # =========
 # Header UI
 # =========
-def get_image_base64(image_path):
-    if os.path.exists(image_path):
-        with open(image_path, "rb") as f:
+def get_image_base64(image_path: Path | str):
+    path = Path(image_path)
+    if path.exists():
+        with path.open("rb") as f:
             return base64.b64encode(f.read()).decode()
     return None
 
 
-hero_image_path = os.path.join(os.path.dirname(__file__), "static", "hero_image.png")
+BASE_DIR = Path(__file__).resolve().parent
+hero_image_path = BASE_DIR / "static" / "hero_image.png"
 hero_image_b64 = get_image_base64(hero_image_path)
 if hero_image_b64:
     st.markdown(
@@ -703,13 +720,9 @@ if page == "📊 Resumen":
                 "Mes",
                 list(range(1, 12 + 1)),
                 index=date.today().month - 1,
-                format_func=lambda x: [
-                    "Enero","Febrero","Marzo","Abril","Mayo","Junio",
-                    "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
-                ][x - 1],
+                format_func=lambda x: MONTH_NAMES_ES[x - 1],
             )
         start = date(y, m, 1)
-        # último día del mes
         if m == 12:
             end = date(y, 12, 31)
         else:
@@ -817,7 +830,6 @@ if page == "📊 Resumen":
             st.info("No hay datos para el rango diario seleccionado.")
 
     elif gran == "Semana":
-        # Elegir MES y AÑO; eje X = Semana 1..N del mes (calendario)
         m_start, m_end, y_sel, m_sel = rango_mes_con_anio()
         df_evo = get_df_sales(m_start, m_end)
         n_weeks = semanas_en_mes(y_sel, m_sel)
@@ -850,7 +862,6 @@ if page == "📊 Resumen":
         st.plotly_chart(apply_dark_theme(fig), use_container_width=True)
 
     elif gran == "Mes":
-        # MENSUAL: SIEMPRE MOSTRAR 4 SEMANAS DEL MES (1–7, 8–14, 15–21, 22–fin)
         m_start, m_end, y_sel, m_sel = rango_mes_con_anio()
         df_evo = get_df_sales(m_start, m_end)
 
@@ -1045,48 +1056,46 @@ elif page == "🧾 Registrar venta":
             continue
         (servicios if it.type == ItemType.service else productos).append((nombre, it))
 
+    def render_item_checklist(items, prefix, allow_quantity=False):
+        columns = st.columns(2)
+        seleccion_local = []
+        for idx, (nombre, it) in enumerate(items):
+            column = columns[idx % len(columns)]
+            with column:
+                label = f"{nombre} — {money(it.price)}"
+                if st.checkbox(label, key=f"{prefix}_chk_{idx}"):
+                    quantity = 1
+                    if allow_quantity:
+                        quantity = st.number_input(
+                            f"Cantidad: {nombre}",
+                            min_value=1,
+                            value=1,
+                            step=1,
+                            key=f"{prefix}_qty_{idx}",
+                        )
+                    seleccion_local.append(
+                        {
+                            "item_id": it.id,
+                            "item_name": it.name,
+                            "quantity": int(quantity),
+                            "unit_price": float(it.price),
+                            "discount": 0.0,
+                            "preview_total": float(it.price) * int(quantity),
+                        }
+                    )
+        return seleccion_local
+
     seleccion = []
 
     # Servicios
     if servicios:
         st.subheader("🔧 Servicios")
-        cols_serv = st.columns(2)
-        for i, (nombre, it) in enumerate(servicios):
-            col = cols_serv[i % 2]
-            with col:
-                marcado = st.checkbox(f"{nombre} — {money(it.price)}", key=f"serv_chk_{i}")
-                if marcado:
-                    seleccion.append(
-                        {
-                            "item_id": it.id,
-                            "item_name": it.name,
-                            "quantity": 1,
-                            "unit_price": float(it.price),
-                            "discount": 0.0,
-                            "preview_total": float(it.price),
-                        }
-                    )
+        seleccion.extend(render_item_checklist(servicios, "serv"))
 
     # Productos
     if productos:
         st.subheader("🛍️ Productos")
-        cols_prod = st.columns(2)
-        for i, (nombre, it) in enumerate(productos):
-            col = cols_prod[i % 2]
-            with col:
-                marcado = st.checkbox(f"{nombre} — {money(it.price)}", key=f"prod_chk_{i}")
-                if marcado:
-                    cant = st.number_input(f"Cantidad: {nombre}", min_value=1, value=1, step=1, key=f"prod_qty_{i}")
-                    seleccion.append(
-                        {
-                            "item_id": it.id,
-                            "item_name": it.name,
-                            "quantity": int(cant),
-                            "unit_price": float(it.price),
-                            "discount": 0.0,
-                            "preview_total": float(it.price) * int(cant),
-                        }
-                    )
+        seleccion.extend(render_item_checklist(productos, "prod", allow_quantity=True))
 
     st.markdown("---")
     st.subheader("💸 Propina (opcional)")
