@@ -1,0 +1,144 @@
+═══════════════════════════════════════════════════════════
+🚀 COMANDOS RÁPIDOS - APLICACIÓN BARBERÍA
+═══════════════════════════════════════════════════════════
+
+📌 INICIAR APLICACIÓN
+─────────────────────────────────────────────────────────
+streamlit run app.py
+
+
+📌 VERIFICAR ESTADO DE LA BASE DE DATOS
+─────────────────────────────────────────────────────────
+python test_fixes.py
+
+
+📌 LIMPIAR CACHÉ DEL NAVEGADOR
+─────────────────────────────────────────────────────────
+Chrome/Edge: Ctrl + Shift + Delete
+Firefox:     Ctrl + Shift + Delete
+Safari:      Cmd + Option + E
+
+
+📌 DETENER APLICACIÓN
+─────────────────────────────────────────────────────────
+Ctrl + C (en la terminal)
+
+
+📌 BACKUP DE BASE DE DATOS
+─────────────────────────────────────────────────────────
+copy barberia.db barberia_backup_%date:~-4,4%%date:~-10,2%%date:~-7,2%.db
+
+
+📌 RESTAURAR BACKUP
+─────────────────────────────────────────────────────────
+copy barberia_backup_YYYYMMDD.db barberia.db
+
+
+📌 VER CLIENTES EN BASE DE DATOS
+─────────────────────────────────────────────────────────
+sqlite3 barberia.db "SELECT * FROM clients;"
+
+
+📌 VER VENTAS EN BASE DE DATOS
+─────────────────────────────────────────────────────────
+sqlite3 barberia.db "SELECT * FROM sales ORDER BY ts DESC LIMIT 10;"
+
+
+📌 CONTAR REGISTROS
+─────────────────────────────────────────────────────────
+sqlite3 barberia.db "SELECT 'Clientes:', COUNT(*) FROM clients; SELECT 'Ventas:', COUNT(*) FROM sales; SELECT 'Gastos:', COUNT(*) FROM expenses;"
+
+
+📌 ELIMINAR BASE DE DATOS Y EMPEZAR DE CERO
+─────────────────────────────────────────────────────────
+# ⚠️ PRECAUCIÓN: Esto borra TODO
+copy barberia.db barberia_backup.db
+del barberia.db
+streamlit run app.py
+
+
+📌 BUSCAR DUPLICADOS EN BASE DE DATOS
+─────────────────────────────────────────────────────────
+sqlite3 barberia.db "SELECT client_id, DATE(ts), item_id, COUNT(*) as count FROM sales GROUP BY client_id, DATE(ts), item_id HAVING count > 1;"
+
+
+═══════════════════════════════════════════════════════════
+🛠️ HERRAMIENTAS EN LA APLICACIÓN
+═══════════════════════════════════════════════════════════
+
+📍 ELIMINAR DUPLICADOS
+   Configuración → Diagnóstico → "🔎 Buscar y Eliminar Duplicados"
+
+📍 LIMPIAR TODOS LOS DATOS
+   Configuración → Diagnóstico → "🔴 Zona de Peligro" → Escribir "ELIMINAR TODO"
+
+📍 GENERAR DATOS DE PRUEBA
+   Configuración → Datos de Prueba → "🎲 Generar Datos de Prueba"
+
+📍 VER ESTADÍSTICAS
+   Configuración → Diagnóstico → Ver métricas
+
+📍 MODIFICAR PRECIOS
+   Configuración → Gestión de Precios
+
+📍 CONFIGURAR PORCENTAJES
+   Configuración → Reparto de Ingresos
+
+
+═══════════════════════════════════════════════════════════
+🔍 VERIFICACIÓN RÁPIDA
+═══════════════════════════════════════════════════════════
+
+✅ Verificar que NO haya datos fantasma:
+   1. Abrir app: streamlit run app.py
+   2. Ir a: 👤 Clientes
+   3. NO debería haber: Juan, Miguel, José
+   4. Ir a: 📜 Historial
+   5. NO debería haber: registros de 10/10, 11/10, 12/10
+
+✅ Verificar que eliminación persista:
+   1. Eliminar un cliente
+   2. Recargar página (F5)
+   3. Cliente NO debe reaparecer
+
+✅ Verificar que no se autogeneren datos:
+   1. Cerrar app (Ctrl+C)
+   2. Reiniciar: streamlit run app.py
+   3. NO deben aparecer nuevos clientes/ventas
+
+
+═══════════════════════════════════════════════════════════
+📚 DOCUMENTACIÓN
+═══════════════════════════════════════════════════════════
+
+📄 RESUMEN_EJECUTIVO.md          - Resumen de soluciones
+📄 SOLUCION_DATOS_FANTASMA.md    - Documentación técnica completa
+📄 test_fixes.py                 - Script de verificación
+📄 COMANDOS_RAPIDOS.txt          - Este archivo
+
+
+═══════════════════════════════════════════════════════════
+🆘 SOLUCIÓN DE PROBLEMAS
+═══════════════════════════════════════════════════════════
+
+❌ "No se puede conectar a la base de datos"
+   → Verifica que barberia.db existe
+   → Reinicia la aplicación
+
+❌ "Siguen apareciendo datos fantasma"
+   → Ejecuta: python test_fixes.py
+   → Ve a Configuración → Limpieza Total
+   → Limpia caché del navegador
+
+❌ "Error al iniciar Streamlit"
+   → Verifica que Python esté instalado
+   → Instala dependencias: pip install -r requirements.txt
+
+❌ "Los cambios no se guardan"
+   → Verifica permisos de escritura en barberia.db
+   → Reinicia la aplicación
+
+
+═══════════════════════════════════════════════════════════
+Última actualización: 12/10/2025 22:17 UTC-3
+═══════════════════════════════════════════════════════════

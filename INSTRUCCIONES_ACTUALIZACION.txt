@@ -1,0 +1,72 @@
+========================================
+INSTRUCCIONES DE ACTUALIZACIÓN
+========================================
+
+Se han realizado las siguientes mejoras a la aplicación:
+
+1. ✅ FUNCIONALIDAD DE ELIMINAR CLIENTES
+   - Ahora puedes eliminar perfiles de clientes desde la sección "Clientes"
+   - El botón de eliminar aparece al final del perfil de cada cliente
+   - Las ventas del cliente se mantienen en el historial
+
+2. ✅ NOTA ACLARATORIA EN DASHBOARD
+   - Se agregó una nota que explica que las cifras de ingresos corresponden
+     al período seleccionado en los filtros de fecha
+
+3. ✅ ORDEN DE COLUMNAS MEJORADO
+   - Las tablas de resumen ahora muestran las columnas en este orden:
+     * Corte de pelo
+     * Perfilado de cejas
+     * Perfilado de barba
+     * Corte + barba
+     * Cera para peinar
+     * Polvo texturizador
+
+4. ✅ CAMPO DE PROPINA
+   - Se agregó un campo opcional de propina en el registro de ventas
+   - La propina se guarda en la base de datos
+
+========================================
+PASOS PARA ACTUALIZAR:
+========================================
+
+1. MIGRAR LA BASE DE DATOS (SOLO UNA VEZ):
+   - Abre la ventana negra (terminal/cmd)
+   - Ve a la carpeta de la aplicación:
+     cd C:\Users\Jorge\Desktop\app
+   
+   - Ejecuta el script de migración:
+     python migrate_add_tip.py
+   
+   - Espera a ver el mensaje "✅ Migración completada"
+
+2. INICIAR LA APLICACIÓN:
+   - Ejecuta normalmente:
+     streamlit run app.py
+   
+   - O usa el archivo Ejecutar_Barberia.bat
+
+========================================
+ELIMINAR CLIENTES DE PRUEBA:
+========================================
+
+Para eliminar los clientes de prueba (Juan, Miguel, José):
+
+1. Abre la aplicación
+2. Ve a la sección "👤 Clientes"
+3. Selecciona cada cliente de prueba
+4. Baja hasta el final del perfil
+5. Encontrarás la "⚠️ Zona de Peligro"
+6. Haz clic en "🗑️ Eliminar Cliente"
+7. Recarga la página (F5) para ver los cambios
+
+========================================
+NOTAS IMPORTANTES:
+========================================
+
+- La migración solo necesita ejecutarse UNA VEZ
+- Si ya ejecutaste la migración, no es necesario hacerlo de nuevo
+- Al eliminar un cliente, su historial de ventas se mantiene
+- Las propinas se registran por venta
+
+========================================

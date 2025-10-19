@@ -1,0 +1,46 @@
+========================================
+   CREAR ARCHIVO .EXE - BARBERÍA APP
+========================================
+
+PASOS PARA CREAR EL .EXE:
+
+1. PREPARACIÓN:
+   ✅ Ya tienes todos los archivos necesarios
+   ✅ Solo necesitas Python instalado en tu PC
+
+2. CREAR EL .EXE:
+   - Haz doble clic en "crear_exe.bat"
+   - Espera a que termine (puede tomar 5-10 minutos)
+   - ¡Listo!
+
+3. USAR EL .EXE:
+   - Ve a la carpeta "dist" que se creó
+   - Ahí encontrarás "Barberia_App.exe"
+   - Haz doble clic en ese archivo
+   - ¡Tu aplicación se abrirá!
+
+========================================
+
+VENTAJAS DEL .EXE:
+✅ No necesitas abrir terminal
+✅ No necesitas recordar comandos
+✅ Puedes mover el .exe a cualquier lugar
+✅ Funciona en cualquier PC con Windows
+✅ Se ve más profesional
+
+========================================
+
+IMPORTANTE:
+- El archivo .exe estará en la carpeta "dist"
+- Puedes copiar todo el contenido de "dist" a otro lugar
+- El .exe necesita que app.py esté en la misma carpeta
+- La primera vez puede tardar un poco en abrir
+
+========================================
+
+Si tienes problemas:
+1. Asegúrate de tener Python instalado
+2. Ejecuta "crear_exe.bat" como administrador
+3. Verifica que no haya antivirus bloqueando
+
+¡Disfruta tu aplicación profesional!

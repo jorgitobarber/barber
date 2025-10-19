@@ -1,0 +1,46 @@
+========================================
+    BARBERIA - SISTEMA DE GESTION
+========================================
+
+INSTALACION Y USO FACIL:
+
+1. PRIMERA VEZ (Solo una vez):
+   - Haz doble clic en "instalar_dependencias.bat"
+   - Espera a que termine la instalacion
+   - (Opcional) Ejecuta "crear_acceso_directo.bat" para tener un icono en el escritorio
+
+2. USAR LA APLICACION:
+   - Haz doble clic en "Ejecutar_Barberia.bat"
+   - O usa el acceso directo del escritorio si lo creaste
+   - La aplicacion se abrira automaticamente en tu navegador
+   - ¡Listo para usar!
+
+3. CERRAR LA APLICACION:
+   - Cierra la pestana del navegador
+   - En la ventana negra (terminal), presiona Ctrl+C
+   - O simplemente cierra la ventana negra
+
+========================================
+
+ARCHIVOS IMPORTANTES:
+- app.py = La aplicacion principal
+- Ejecutar_Barberia.bat = Para abrir la aplicacion
+- instalar_dependencias.bat = Para instalar lo necesario (solo primera vez)
+- crear_acceso_directo.bat = Para crear icono en escritorio
+- barberia.db = Base de datos (se crea automaticamente)
+
+========================================
+
+SOLUCION DE PROBLEMAS:
+
+Si no funciona:
+1. Asegurate de tener Python instalado (python.org)
+2. Ejecuta "instalar_dependencias.bat" como administrador
+3. Si sigue sin funcionar, contacta al desarrollador
+
+Si la aplicacion no se abre en el navegador:
+- Ve manualmente a: http://localhost:8501
+
+========================================
+
+¡Disfruta tu sistema de gestion para barberia!
