@@ -19,6 +19,7 @@ from sqlalchemy import (
     create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Enum, Text
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.exc import SQLAlchemyError
 
 # =========================
 # Streamlit — Config & CSS
@@ -121,7 +122,6 @@ div[data-baseweb="popover"] [data-baseweb="menu"] {
   color: #e5e7eb !important;
   border-color: rgba(255,255,255,.18) !important;
 }
-div[data-baseweb="popover"] [data-baseweb="menu"]] * { color: #e5e7eb !important; }
 
 /* Radios / Checkboxes: texto claro */
 div[role="radiogroup"] > label, .stCheckbox > label { color: #e5e7eb !important; }
@@ -191,7 +191,7 @@ div[data-testid="stAlert"] {
 # DB — SQLite + SQLAlchemy
 # =========================
 DB_PATH = "barberia.db"
-engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, future=True)
+engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, future=True, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
@@ -475,7 +475,7 @@ def get_df_expenses(start: date = None, end: date = None) -> pd.DataFrame:
 
 
 def ensure_client(name: str, phone: str = "", notes: str = ""):
-    name = name.strip()
+    name = (name or "").strip()
     if not name:
         return None
     with SessionLocal() as s:
@@ -595,6 +595,71 @@ def get_grouped_sales(start: date = None, end: date = None):
         result = sorted(visits.values(), key=lambda x: x["fecha_hora"], reverse=True)
         return result
 
+# =========
+# Helpers edición/eliminación de visitas
+# =========
+def _is_legacy_ticket(ticket_id: str) -> bool:
+    return (ticket_id or "").startswith("legacy_")
+
+def _legacy_sale_id(ticket_id: str) -> int | None:
+    try:
+        return int((ticket_id or "").split("_", 1)[1])
+    except Exception:
+        return None
+
+def delete_visit(ticket_id: str):
+    """Elimina todas las líneas de una visita (por ticket_id) o una línea legacy."""
+    with SessionLocal() as s:
+        if _is_legacy_ticket(ticket_id):
+            sale_id = _legacy_sale_id(ticket_id)
+            if sale_id is not None:
+                s.query(Sale).filter(Sale.id == sale_id).delete(synchronize_session=False)
+        else:
+            s.query(Sale).filter(Sale.ticket_id == ticket_id).delete(synchronize_session=False)
+        s.commit()
+
+def replace_visit(ticket_id: str, ts: datetime, client_name: str, lines: list[dict], tip_total: float) -> str:
+    """
+    Reemplaza la visita completa:
+    - Borra líneas actuales (ticket o legacy)
+    - Inserta nuevas líneas con el mismo ticket (o crea uno si era legacy)
+    lines: [{item_id, quantity, unit_price, discount}]
+    """
+    new_ticket = ticket_id if (ticket_id and not _is_legacy_ticket(ticket_id)) else str(uuid.uuid4())
+    client_id = ensure_client(client_name) if (client_name or "").strip() else None
+
+    with SessionLocal() as s:
+        # Borrar actuales
+        if _is_legacy_ticket(ticket_id):
+            sale_id = _legacy_sale_id(ticket_id)
+            if sale_id is not None:
+                s.query(Sale).filter(Sale.id == sale_id).delete(synchronize_session=False)
+        else:
+            s.query(Sale).filter(Sale.ticket_id == ticket_id).delete(synchronize_session=False)
+
+        # Insertar nuevas
+        for i, ln in enumerate(lines):
+            s.add(Sale(
+                ts=ts,
+                ticket_id=new_ticket,
+                client_id=client_id,
+                item_id=int(ln["item_id"]),
+                quantity=int(ln.get("quantity", 1)),
+                unit_price=float(ln.get("unit_price", 0.0)),
+                discount=float(ln.get("discount", 0.0)),
+                tip=(float(tip_total) if i == 0 else 0.0)
+            ))
+        s.commit()
+    return new_ticket
+
+def _safe_rerun():
+    try:
+        st.rerun()
+    except Exception:
+        try:
+            st.experimental_rerun()
+        except Exception:
+            pass
 
 # =========
 # Header UI
@@ -1255,7 +1320,7 @@ elif page == "🧰 Items":
     st.dataframe(pd.DataFrame(catalogo), use_container_width=True, hide_index=True)
 
 # =========
-# Historial
+# Historial (con Editar / Eliminar)
 # =========
 elif page == "📜 Historial":
     st.title("📜 Historial de Visitas")
@@ -1264,7 +1329,9 @@ elif page == "📜 Historial":
         st.info("No hay visitas registradas en el período.")
     else:
         st.markdown(f"**Total de visitas:** {len(visits)}")
+        items_catalog = get_items()  # para editor
         for idx, v in enumerate(visits):
+            ticket = v["ticket_id"]
             with st.expander(
                 f"🗓️ {v['fecha']} {v['hora']} — {v['cliente']} — {money(v['total'])}",
                 expanded=(idx < 3),
@@ -1293,6 +1360,94 @@ elif page == "📜 Historial":
                         st.metric("Descuento", money(v["descuento_total"]))
                     if v["propina_total"] > 0:
                         st.metric("Propina", money(v["propina_total"]))
+
+                st.markdown("---")
+                # ================== Editor de visita ==================
+                with st.expander("✏️ Editar visita", expanded=False):
+                    # Defaults:
+                    d_default = v["fecha"]
+                    h_default = datetime.strptime(v["hora"], "%H:%M").time()
+                    cliente_default = "" if v["cliente"] == "(sin cliente)" else v["cliente"]
+                    tip_default = float(v.get("propina_total", 0.0))
+
+                    cfe1, cfe2 = st.columns(2)
+                    with cfe1:
+                        new_date = st.date_input("Fecha", value=d_default, key=f"edit_date_{ticket}_{idx}")
+                    with cfe2:
+                        time_index = get_30min_intervals().index(h_default.strftime("%H:%M")) if h_default.strftime("%H:%M") in get_30min_intervals() else 0
+                        new_time_str = st.selectbox("Hora", options=get_30min_intervals(), index=time_index, key=f"edit_time_{ticket}_{idx}")
+                        new_time = datetime.strptime(new_time_str, "%H:%M").time()
+
+                    new_cliente = st.text_input("Nombre del cliente (deja vacío para 'sin cliente')", value=cliente_default, key=f"edit_cliente_{ticket}_{idx}")
+                    new_tip = st.number_input("Propina total (CLP)", min_value=0, value=int(round(tip_default)), step=500, key=f"edit_tip_{ticket}_{idx}")
+
+                    st.markdown("#### Ítems de la visita")
+                    # Mapa de líneas actuales por item_id para defaults
+                    current_lines = {ln["servicio_id"]: ln for ln in v["items"]}
+
+                    selected_lines = []
+                    cols = st.columns(2)
+                    for j, it in enumerate(items_catalog):
+                        col = cols[j % 2]
+                        with col:
+                            ln = current_lines.get(it.id)
+                            default_checked = ln is not None and int(ln["cantidad"]) > 0
+                            chk = st.checkbox(f"{it.name} — {money(it.price)}", value=default_checked, key=f"edit_chk_{ticket}_{it.id}")
+                            if chk:
+                                qty_default = int(ln["cantidad"]) if ln else 1
+                                price_default = float(ln["precio_unitario"]) if ln else float(it.price)
+                                disc_default = float(ln["descuento"]) if ln else 0.0
+
+                                q = st.number_input(f"Cantidad: {it.name}", min_value=1, value=qty_default, step=1, key=f"edit_qty_{ticket}_{it.id}")
+                                p = st.number_input(f"Precio unitario: {it.name}", min_value=0.0, value=float(price_default), step=500.0, key=f"edit_price_{ticket}_{it.id}")
+                                dsc = st.number_input(f"Descuento: {it.name}", min_value=0.0, value=float(disc_default), step=500.0, key=f"edit_disc_{ticket}_{it.id}")
+
+                                selected_lines.append({
+                                    "item_id": it.id,
+                                    "quantity": int(q),
+                                    "unit_price": float(p),
+                                    "discount": float(dsc),
+                                })
+
+                    # Preview
+                    if selected_lines:
+                        preview_rows = []
+                        subtotal = 0.0
+                        for ln in selected_lines:
+                            sub = ln["quantity"] * ln["unit_price"] - ln["discount"]
+                            subtotal += sub
+                            name = next((x.name for x in items_catalog if x.id == ln["item_id"]), f"ID {ln['item_id']}")
+                            preview_rows.append({"Ítem": name, "Cant.": ln["quantity"], "Precio Unit.": money(ln["unit_price"]), "Desc.": money(ln["discount"]), "Subtotal": money(sub)})
+                        df_prev = pd.DataFrame(preview_rows)
+                        st.dataframe(df_prev, use_container_width=True, hide_index=True)
+                        cpr1, cpr2, cpr3 = st.columns(3)
+                        cpr1.metric("Subtotal", money(subtotal))
+                        cpr2.metric("Propina", money(new_tip))
+                        cpr3.metric("Total", money(subtotal + new_tip))
+                    else:
+                        st.info("Selecciona uno o más ítems para la visita.")
+
+                    if st.button("💾 Guardar cambios", key=f"save_edit_{ticket}_{idx}"):
+                        if not selected_lines:
+                            st.error("Debe haber al menos un ítem.")
+                        else:
+                            new_ts = datetime.combine(new_date, new_time)
+                            new_ticket = replace_visit(ticket, new_ts, new_cliente, selected_lines, new_tip)
+                            st.success("✅ Visita actualizada")
+                            st.info(f"Ticket ID: {new_ticket[:8]}…")
+                            _safe_rerun()
+
+                # ================== Eliminar visita ==================
+                with st.expander("🗑️ Eliminar visita", expanded=False):
+                    st.warning("Esta acción elimina la visita completa. Escribe **BORRAR** para confirmar.")
+                    conf = st.text_input("Confirmación", key=f"del_conf_{ticket}_{idx}")
+                    if st.button("Eliminar definitivamente", key=f"del_btn_{ticket}_{idx}"):
+                        if conf.strip().upper() == "BORRAR":
+                            delete_visit(ticket)
+                            st.success("🗑️ Visita eliminada")
+                            _safe_rerun()
+                        else:
+                            st.error("Escribe BORRAR para confirmar.")
 
 # ===============
 # Configuración
