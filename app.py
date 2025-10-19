@@ -10,9 +10,11 @@ import enum
 import datetime as dt
 from datetime import datetime, date, timedelta
 import calendar
+from statistics import mean, median
+from collections import Counter
 
+import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import (
@@ -48,7 +50,6 @@ st.markdown(
 st.markdown(
     """
 <style>
-/* ====== BASE OSCURA GLOBAL ====== */
 :root { color-scheme: dark; }
 html, body, .stApp, [data-testid="stAppViewContainer"] {
   background-color: #0e1117 !important;
@@ -56,28 +57,23 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 }
 .main { background-color: #0e1117 !important; padding-top: .5rem; }
 
-/* Forzar color claro en textos generales */
+/* Texto claro global */
 h1, h2, h3, h4, h5, h6,
 p, span, label, legend,
 [data-testid="stMarkdownContainer"], .stMarkdown, .stCaption, .stText {
   color: #e5e7eb !important;
 }
-
-/* Placeholders de inputs */
 ::placeholder { color: #94a3b8 !important; opacity: .85; }
-
-/* Enlaces */
 a { color: #8ab4ff !important; }
 
-/* ====== SIDEBAR OSCURA ====== */
+/* Sidebar oscuro */
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, #121826 0%, #0b1220 100%) !important;
   border-right: 1px solid rgba(255,255,255,.08) !important;
 }
 [data-testid="stSidebar"] * { color: #e5e7eb !important; }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong { color: #ffffff !important; }
 
-/* HEADER (más pequeño y rectangular) */
+/* Header */
 .header-container {
   max-width: 980px;
   margin: 0 auto 1rem auto;
@@ -104,7 +100,7 @@ a { color: #8ab4ff !important; }
   .header-subtitle { text-align:center; }
 }
 
-/* ====== CONTROLES ====== */
+/* Controles */
 .stTextInput input, .stTextArea textarea,
 .stSelectbox [data-baseweb="select"], .stDateInput input,
 .stTimeInput input, .stNumberInput input {
@@ -114,7 +110,7 @@ a { color: #8ab4ff !important; }
   border-radius: 10px !important;
 }
 
-/* Select (barra y menú) */
+/* Select: menú y trigger oscuros */
 .stSelectbox [data-baseweb="select"],
 .stSelectbox [data-baseweb="select"] > div,
 div[data-baseweb="popover"] [data-baseweb="menu"] {
@@ -123,10 +119,10 @@ div[data-baseweb="popover"] [data-baseweb="menu"] {
   border-color: rgba(255,255,255,.18) !important;
 }
 
-/* Radios / Checkboxes: texto claro */
+/* Radios / Checkboxes */
 div[role="radiogroup"] > label, .stCheckbox > label { color: #e5e7eb !important; }
 
-/* Buttons */
+/* Botones */
 .stButton>button {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   color: white !important;
@@ -148,33 +144,32 @@ div[role="radiogroup"] > label, .stCheckbox > label { color: #e5e7eb !important;
   padding: 10px 16px !important;
 }
 
-/* Metric cards (contenedor) */
+/* Métricas */
 [data-testid="metric-container"] {
   background: linear-gradient(135deg, #1e2329 0%, #2a2f36 100%) !important;
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 12px; padding: .8rem;
   color: #e5e7eb !important;
 }
-/* Métricas: número, delta y etiqueta SIEMPRE claros */
 [data-testid="stMetricLabel"], [data-testid="stMetricValue"], [data-testid="stMetricDelta"] {
   color: #fafafa !important;
 }
 
-/* DataFrame / Tablas: fondo y cabecera oscuros, texto claro */
+/* Tablas */
 [data-testid="stDataFrame"] { background: #1e2329 !important; border-radius: 10px; }
 [data-testid="stDataFrame"] table { background-color: #1e2329 !important; }
 [data-testid="stDataFrame"] thead tr { background: #20262d !important; }
 [data-testid="stDataFrame"] tbody tr { background: #1e2329 !important; }
 [data-testid="stDataFrame"] * , [data-testid="stTable"] * { color: #e5e7eb !important; }
 
-/* Alerts (info/warn/success/error) oscuros */
+/* Alerts */
 div[data-testid="stAlert"] {
   background: #141820 !important;
   color: #e5e7eb !important;
   border: 1px solid rgba(255,255,255,.12) !important;
 }
 
-/* Plotly bg */
+/* Plotly */
 .js-plotly-plot { background: transparent !important; }
 
 /* Scrollbar */
@@ -188,18 +183,21 @@ div[data-testid="stAlert"] {
 )
 
 # =========================
-# DB — SQLite + SQLAlchemy
+# DB — SQLite (local) por ahora
 # =========================
 DB_PATH = "barberia.db"
-engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, future=True, connect_args={"check_same_thread": False})
+engine = create_engine(
+    f"sqlite:///{DB_PATH}", echo=False, future=True, connect_args={"check_same_thread": False}
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-
+# =========================
+# Modelos
+# =========================
 class ItemType(enum.Enum):
     service = "service"
     product = "product"
-
 
 class Client(Base):
     __tablename__ = "clients"
@@ -210,14 +208,12 @@ class Client(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     sales = relationship("Sale", back_populates="client")
 
-
 class Item(Base):
     __tablename__ = "items"
     id = Column(Integer, primary_key=True)
     name = Column(String(120), nullable=False, unique=True)
     price = Column(Float, nullable=False)
     type = Column(Enum(ItemType), nullable=False)
-
 
 class Sale(Base):
     __tablename__ = "sales"
@@ -233,7 +229,6 @@ class Sale(Base):
     client = relationship("Client", back_populates="sales")
     item = relationship("Item")
 
-
 class Expense(Base):
     __tablename__ = "expenses"
     id = Column(Integer, primary_key=True)
@@ -242,7 +237,6 @@ class Expense(Base):
     category = Column(String(120), nullable=False)
     note = Column(Text, nullable=True)
 
-
 class AppConfig(Base):
     __tablename__ = "app_config"
     id = Column(Integer, primary_key=True)
@@ -250,13 +244,11 @@ class AppConfig(Base):
     value = Column(String(255), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-
 def init_db():
     Base.metadata.create_all(bind=engine)
     seed_items()
     migrate_tip_column()
     migrate_ticket_id_column()
-
 
 def migrate_tip_column():
     import sqlite3
@@ -271,7 +263,6 @@ def migrate_tip_column():
         conn.close()
     except Exception as e:
         print("migrate_tip_column error:", e)
-
 
 def migrate_ticket_id_column():
     import sqlite3
@@ -301,7 +292,6 @@ def migrate_ticket_id_column():
     except Exception as e:
         print("migrate_ticket_id_column error:", e)
 
-
 def seed_items():
     base_items = [
         ("Corte de pelo", 8000, ItemType.service),
@@ -327,7 +317,6 @@ def seed_items():
         if changed:
             s.commit()
 
-
 init_db()
 
 # =========
@@ -337,8 +326,10 @@ def money(x: float) -> str:
     try:
         return f"$ {int(round(x)):,}".replace(",", ".")
     except:
-        return f"$ {x:,.0f}".replace(",", ".")
-
+        try:
+            return f"$ {x:,.0f}".replace(",", ".")
+        except:
+            return str(x)
 
 def get_30min_intervals():
     times = []
@@ -347,18 +338,15 @@ def get_30min_intervals():
         times.append(dt.time(hour, 30).strftime("%H:%M"))
     return times
 
-
 def apply_dark_theme(fig):
-    # Fondo y fuentes claras
     fig.update_layout(
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#fafafa"),
         margin=dict(l=30, r=20, t=50, b=30),
-        xaxis=dict(type="category"),  # sin horas
+        xaxis=dict(type="category"),
         title_font_color="#fafafa",
     )
-    # Ejes y títulos de ejes claros
     fig.update_xaxes(
         title_font=dict(color="#e5e7eb"),
         tickfont=dict(color="#e5e7eb"),
@@ -371,7 +359,6 @@ def apply_dark_theme(fig):
     )
     return fig
 
-
 def nombre_mes_es(m: int) -> str:
     meses = [
         "Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -379,22 +366,15 @@ def nombre_mes_es(m: int) -> str:
     ]
     return meses[m-1]
 
-
 def semanas_en_mes(year: int, month: int) -> int:
-    # Número de semanas "de calendario" (Lun–Dom) que cubren el mes
     first_weekday, days_in_month = calendar.monthrange(year, month)  # Lunes=0
     return ((first_weekday + days_in_month - 1) // 7) + 1
 
-
 def semana_del_mes(d: date) -> int:
-    # Semana del mes con base lunes (Lun=0)
     first_weekday, _ = calendar.monthrange(d.year, d.month)  # Lunes=0
     return ((d.day + first_weekday - 1) // 7) + 1
 
-
 def semana_bucket_4(d: date) -> int:
-    """Devuelve 1..4 según el día del mes:
-       1: 1–7, 2: 8–14, 3: 15–21, 4: 22–fin."""
     if d.day <= 7:
         return 1
     elif d.day <= 14:
@@ -404,9 +384,8 @@ def semana_bucket_4(d: date) -> int:
     else:
         return 4
 
-
 # ========
-# Queries
+# Queries base
 # ========
 def get_df_sales(start: date = None, end: date = None) -> pd.DataFrame:
     with SessionLocal() as s:
@@ -424,7 +403,9 @@ def get_df_sales(start: date = None, end: date = None) -> pd.DataFrame:
                     "ts": r.ts,
                     "fecha": r.ts.date(),
                     "hora": r.ts.time().strftime("%H:%M"),
+                    "cliente_id": r.client_id,
                     "cliente": (r.client.name if r.client else "(sin cliente)"),
+                    "item_id": r.item_id,
                     "item": r.item.name,
                     "tipo": r.item.type.value,
                     "cantidad": r.quantity,
@@ -440,12 +421,12 @@ def get_df_sales(start: date = None, end: date = None) -> pd.DataFrame:
             if data
             else pd.DataFrame(
                 columns=[
-                    "id","ts","fecha","hora","cliente","item","tipo",
-                    "cantidad","precio_unit","descuento","total_linea","ticket_id","tip"
+                    "id","ts","fecha","hora","cliente_id","cliente",
+                    "item_id","item","tipo","cantidad","precio_unit",
+                    "descuento","total_linea","ticket_id","tip"
                 ]
             )
         )
-
 
 def get_df_expenses(start: date = None, end: date = None) -> pd.DataFrame:
     with SessionLocal() as s:
@@ -473,82 +454,18 @@ def get_df_expenses(start: date = None, end: date = None) -> pd.DataFrame:
             else pd.DataFrame(columns=["id","ts","fecha","hora","categoria","nota","monto"])
         )
 
-
-def ensure_client(name: str, phone: str = "", notes: str = ""):
-    name = (name or "").strip()
-    if not name:
-        return None
-    with SessionLocal() as s:
-        c = s.query(Client).filter(Client.name.ilike(name)).first()
-        if c:
-            updated = False
-            if phone and (not c.phone):
-                c.phone = phone
-                updated = True
-            if notes and (not c.notes):
-                c.notes = notes
-                updated = True
-            if updated:
-                s.commit()
-            return c.id
-        c = Client(name=name, phone=phone or None, notes=notes or None)
-        s.add(c)
-        s.commit()
-        return c.id
-
-
-def add_sale(
-    ts: datetime,
-    client_id: int,
-    item_id: int,
-    quantity: int,
-    unit_price: float,
-    discount: float,
-    tip: float = 0.0,
-    ticket_id: str = None,
-):
-    with SessionLocal() as s:
-        if not ticket_id:
-            ticket_id = str(uuid.uuid4())
-        sale = Sale(
-            ts=ts,
-            ticket_id=ticket_id,
-            client_id=client_id,
-            item_id=item_id,
-            quantity=quantity,
-            unit_price=unit_price,
-            discount=discount,
-            tip=tip,
-        )
-        s.add(sale)
-        s.commit()
-        return ticket_id
-
-
-def add_expense(ts: datetime, amount: float, category: str, note: str):
-    with SessionLocal() as s:
-        e = Expense(
-            ts=ts, amount=float(amount), category=category.strip() or "Otros", note=note or None
-        )
-        s.add(e)
-        s.commit()
-
-
 def get_items():
     with SessionLocal() as s:
         return s.query(Item).order_by(Item.type, Item.name).all()
-
 
 def get_items_by_names(names):
     with SessionLocal() as s:
         rows = s.query(Item).filter(Item.name.in_(names)).all()
         return {r.name: r for r in rows}
 
-
 def get_all_clients():
     with SessionLocal() as s:
         return s.query(Client).order_by(Client.name.asc()).all()
-
 
 def get_grouped_sales(start: date = None, end: date = None):
     with SessionLocal() as s:
@@ -570,6 +487,50 @@ def get_grouped_sales(start: date = None, end: date = None):
                     "hora": sale.ts.time().strftime("%H:%M"),
                     "cliente_id": sale.client_id,
                     "cliente": sale.client.name if sale.client else "(sin cliente)",
+                    "items": [],
+                    "total": 0.0,
+                    "descuento_total": 0.0,
+                    "propina_total": 0.0,
+                }
+            item_total = sale.quantity * sale.unit_price - sale.discount
+            visits[ticket]["items"].append(
+                {
+                    "id": sale.id,
+                    "servicio_id": sale.item_id,
+                    "nombre": sale.item.name,
+                    "tipo": sale.item.type.value,
+                    "cantidad": sale.quantity,
+                    "precio_unitario": sale.unit_price,
+                    "descuento": sale.discount,
+                    "subtotal": item_total,
+                }
+            )
+            visits[ticket]["total"] += item_total
+            visits[ticket]["descuento_total"] += sale.discount
+            visits[ticket]["propina_total"] += sale.tip
+
+        result = sorted(visits.values(), key=lambda x: x["fecha_hora"], reverse=True)
+        return result
+
+def get_grouped_sales_by_client(client_id: int, start: date = None, end: date = None):
+    """Visitas agrupadas por ticket para un cliente específico."""
+    with SessionLocal() as s:
+        q = s.query(Sale).join(Item).filter(Sale.client_id == client_id)
+        if start:
+            q = q.filter(Sale.ts >= dt.datetime.combine(start, dt.time.min))
+        if end:
+            q = q.filter(Sale.ts <= dt.datetime.combine(end, dt.time.max))
+        sales = q.order_by(Sale.ts.desc()).all()
+
+        visits = {}
+        for sale in sales:
+            ticket = sale.ticket_id or f"legacy_{sale.id}"
+            if ticket not in visits:
+                visits[ticket] = {
+                    "ticket_id": ticket,
+                    "fecha_hora": sale.ts,
+                    "fecha": sale.ts.date(),
+                    "hora": sale.ts.time().strftime("%H:%M"),
                     "items": [],
                     "total": 0.0,
                     "descuento_total": 0.0,
@@ -652,6 +613,63 @@ def replace_visit(ticket_id: str, ts: datetime, client_name: str, lines: list[di
         s.commit()
     return new_ticket
 
+def ensure_client(name: str, phone: str = "", notes: str = ""):
+    name = (name or "").strip()
+    if not name:
+        return None
+    with SessionLocal() as s:
+        c = s.query(Client).filter(Client.name.ilike(name)).first()
+        if c:
+            updated = False
+            if phone and (not c.phone):
+                c.phone = phone
+                updated = True
+            if notes and (not c.notes):
+                c.notes = notes
+                updated = True
+            if updated:
+                s.commit()
+            return c.id
+        c = Client(name=name, phone=phone or None, notes=notes or None)
+        s.add(c)
+        s.commit()
+        return c.id
+
+def add_sale(
+    ts: datetime,
+    client_id: int,
+    item_id: int,
+    quantity: int,
+    unit_price: float,
+    discount: float,
+    tip: float = 0.0,
+    ticket_id: str = None,
+):
+    with SessionLocal() as s:
+        if not ticket_id:
+            ticket_id = str(uuid.uuid4())
+        sale = Sale(
+            ts=ts,
+            ticket_id=ticket_id,
+            client_id=client_id,
+            item_id=item_id,
+            quantity=quantity,
+            unit_price=unit_price,
+            discount=discount,
+            tip=tip,
+        )
+        s.add(sale)
+        s.commit()
+        return ticket_id
+
+def add_expense(ts: datetime, amount: float, category: str, note: str):
+    with SessionLocal() as s:
+        e = Expense(
+            ts=ts, amount=float(amount), category=category.strip() or "Otros", note=note or None
+        )
+        s.add(e)
+        s.commit()
+
 def _safe_rerun():
     try:
         st.rerun()
@@ -669,7 +687,6 @@ def get_image_base64(image_path):
         with open(image_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return None
-
 
 hero_image_path = os.path.join(os.path.dirname(__file__), "static", "hero_image.png")
 hero_image_b64 = get_image_base64(hero_image_path)
@@ -719,6 +736,7 @@ page = st.sidebar.radio(
         "👤 Clientes",
         "🧰 Items",
         "📜 Historial",
+        "📈 Análisis",
         "⚙️ Configuración",
     ],
     index=0,
@@ -732,12 +750,11 @@ with st.sidebar.expander("Filtros de fecha (global)", expanded=False):
     global_end = st.date_input("Hasta", value=hoy, key="fhasta_global")
 
 # ==========================
-# Resumen — NUEVA EXPERIENCIA
+# Resumen
 # ==========================
 if page == "📊 Resumen":
     st.title("📊 Resumen")
 
-    # -------- Vista y Período puntual (para KPIs + Distribución + Resumen items) ----------
     st.markdown("#### 🎛️ Vista y período")
     vista = st.radio(
         "Selecciona vista",
@@ -747,19 +764,15 @@ if page == "📊 Resumen":
         key="vista_resumen",
     )
 
-    # Helpers de selección por vista
     def pick_diario():
         d = st.date_input("Día", value=date.today(), key="pick_dia")
-        start = d
-        end = d
-        label = d.strftime("%d/%m/%Y")
+        start = d; end = d; label = d.strftime("%d/%m/%Y")
         return start, end, label
 
     def pick_semanal():
         d = st.date_input(
             "Semana (elige cualquier día de la semana deseada)",
-            value=date.today(),
-            key="pick_semana",
+            value=date.today(), key="pick_semana",
         )
         week_start = d - timedelta(days=d.weekday())
         week_end = week_start + timedelta(days=6)
@@ -781,19 +794,13 @@ if page == "📊 Resumen":
                 ][x - 1],
             )
         start = date(y, m, 1)
-        # último día del mes
-        if m == 12:
-            end = date(y, 12, 31)
-        else:
-            end = date(y, m + 1, 1) - timedelta(days=1)
+        end = date(y, m, calendar.monthrange(y, m)[1])
         label = f"{start.strftime('%B %Y')}"
         return start, end, label
 
     def pick_anual():
         y = st.number_input("Año", min_value=2000, max_value=2100, value=date.today().year, step=1, key="pick_anio")
-        start = date(y, 1, 1)
-        end = date(y, 12, 31)
-        label = f"{y}"
+        start = date(y, 1, 1); end = date(y, 12, 31); label = f"{y}"
         return start, end, label
 
     if vista == "Diario":
@@ -819,31 +826,20 @@ if page == "📊 Resumen":
 
     st.markdown("---")
 
-    # -------- Evolución de ingresos ----------
+    # Evolución de Ingresos
     st.markdown("### 📈 Evolución de Ingresos")
     st.caption("La granularidad se ajusta automáticamente a la vista seleccionada.")
 
-    # Selectores por granularidad en función de la vista
     def rango_dia():
         col1, col2 = st.columns(2)
-        with col1:
-            d1 = st.date_input("Desde (día)", value=p_start, key="evo_d1")
-        with col2:
-            d2 = st.date_input("Hasta (día)", value=p_end, key="evo_d2")
+        with col1: d1 = st.date_input("Desde (día)", value=p_start, key="evo_d1")
+        with col2: d2 = st.date_input("Hasta (día)", value=p_end, key="evo_d2")
         return d1, d2
 
     def rango_mes_con_anio():
         col1, col2 = st.columns(2)
-        with col1:
-            y = st.number_input("Año", min_value=2000, max_value=2100, value=p_start.year, key="evo_y")
-        with col2:
-            m = st.selectbox(
-                "Mes",
-                list(range(1, 13)),
-                index=p_start.month - 1,
-                key="evo_m",
-                format_func=nombre_mes_es,
-            )
+        with col1: y = st.number_input("Año", min_value=2000, max_value=2100, value=p_start.year, key="evo_y")
+        with col2: m = st.selectbox("Mes", list(range(1, 13)), index=p_start.month - 1, key="evo_m", format_func=nombre_mes_es)
         start = date(y, m, 1)
         end = date(y, m, calendar.monthrange(y, m)[1])
         return start, end, y, m
@@ -852,106 +848,62 @@ if page == "📊 Resumen":
         y = st.number_input("Año", min_value=2000, max_value=2100, value=p_start.year, key="evo_year_only")
         return date(y, 1, 1), date(y, 12, 31), y
 
-    # Determinar "gran" en función de la vista (forzado para evitar confusión)
     if vista == "Diario":
         gran = "Día"
     elif vista == "Semanal":
         gran = "Semana"
     elif vista == "Mensual":
-        gran = "Mes"       # <- SIEMPRE semanas 1..4 del mes
+        gran = "Mes"
     else:
         gran = "Año"
 
-    # ----- Gráficos por granularidad (sin horas en eje X) -----
     if gran == "Día":
         r_start, r_end = rango_dia()
         df_evo = get_df_sales(r_start, r_end)
         if not df_evo.empty:
             rng = pd.date_range(r_start, r_end, freq="D").date
-            serie = df_evo.groupby("fecha")["total_linea"].sum()
-            serie = serie.reindex(rng, fill_value=0.0)
+            serie = df_evo.groupby("fecha")["total_linea"].sum().reindex(rng, fill_value=0.0)
             x_labels = [d.strftime("%d/%m") for d in rng]
-
             fig = go.Figure()
-            fig.add_trace(
-                go.Scatter(
-                    x=x_labels,
-                    y=serie.values,
-                    mode="lines+markers",
-                    line=dict(width=3),
-                    fill="tozeroy",
-                    name="Ingresos diarios",
-                )
-            )
+            fig.add_scatter(x=x_labels, y=serie.values, mode="lines+markers", name="Ingresos diarios", fill="tozeroy")
             fig.update_layout(title="Evolución diaria", xaxis_title="Fecha", yaxis_title="Ingresos (CLP)")
             st.plotly_chart(apply_dark_theme(fig), use_container_width=True)
         else:
             st.info("No hay datos para el rango diario seleccionado.")
 
     elif gran == "Semana":
-        # Elegir MES y AÑO; eje X = Semana 1..N del mes (calendario)
         m_start, m_end, y_sel, m_sel = rango_mes_con_anio()
         df_evo = get_df_sales(m_start, m_end)
         n_weeks = semanas_en_mes(y_sel, m_sel)
         semanas = [f"Semana {i}" for i in range(1, n_weeks + 1)]
         vals = [0.0] * n_weeks
-
         if not df_evo.empty:
             df_evo["fecha"] = pd.to_datetime(df_evo["ts"]).dt.date
             df_evo["semana_mes"] = df_evo["fecha"].apply(semana_del_mes)
             g = df_evo.groupby("semana_mes")["total_linea"].sum().to_dict()
             for i in range(1, n_weeks + 1):
                 vals[i - 1] = float(g.get(i, 0.0))
-
         fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=semanas,
-                y=vals,
-                mode="lines+markers",
-                line=dict(width=3),
-                fill="tozeroy",
-                name="Ingresos semanales",
-            )
-        )
-        fig.update_layout(
-            title=f"Evolución semanal — {nombre_mes_es(m_sel)} {y_sel}",
-            xaxis_title="Semanas del mes (calendario)",
-            yaxis_title="Ingresos (CLP)",
-        )
+        fig.add_scatter(x=semanas, y=vals, mode="lines+markers", name="Ingresos semanales", fill="tozeroy")
+        fig.update_layout(title=f"Evolución semanal — {nombre_mes_es(m_sel)} {y_sel}",
+                          xaxis_title="Semanas del mes (calendario)", yaxis_title="Ingresos (CLP)")
         st.plotly_chart(apply_dark_theme(fig), use_container_width=True)
 
     elif gran == "Mes":
-        # MENSUAL: SIEMPRE MOSTRAR 4 SEMANAS DEL MES (1–7, 8–14, 15–21, 22–fin)
         m_start, m_end, y_sel, m_sel = rango_mes_con_anio()
         df_evo = get_df_sales(m_start, m_end)
-
         etiquetas = [f"Semana {i}" for i in range(1, 5)]
         vals = [0.0, 0.0, 0.0, 0.0]
-
         if not df_evo.empty:
             df_evo["fecha"] = pd.to_datetime(df_evo["ts"]).dt.date
             df_evo["bucket4"] = df_evo["fecha"].apply(semana_bucket_4)
             g = df_evo.groupby("bucket4")["total_linea"].sum().to_dict()
             for i in range(1, 5):
                 vals[i - 1] = float(g.get(i, 0.0))
-
         fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=etiquetas,
-                y=vals,
-                mode="lines+markers",
-                line=dict(width=3),
-                fill="tozeroy",
-                name=f"Ingresos — {nombre_mes_es(m_sel)} {y_sel}",
-            )
-        )
-        fig.update_layout(
-            title=f"Evolución mensual — {nombre_mes_es(m_sel)} {y_sel} (4 semanas)",
-            xaxis_title="Semanas del mes (1–4)",
-            yaxis_title="Ingresos (CLP)",
-        )
+        fig.add_scatter(x=etiquetas, y=vals, mode="lines+markers", name=f"Ingresos — {nombre_mes_es(m_sel)} {y_sel}", fill="tozeroy")
+        fig.update_layout(title=f"Evolución mensual — {nombre_mes_es(m_sel)} {y_sel} (4 semanas)",
+                          xaxis_title="Semanas del mes (1–4)", yaxis_title="Ingresos (CLP)")
         st.plotly_chart(apply_dark_theme(fig), use_container_width=True)
 
     else:  # Año
@@ -959,78 +911,18 @@ if page == "📊 Resumen":
         df_evo = get_df_sales(y_start, y_end)
         meses_labels = [nombre_mes_es(i) for i in range(1, 13)]
         vals = [0.0] * 12
-
         if not df_evo.empty:
             df_evo["mes_num"] = pd.to_datetime(df_evo["ts"]).dt.month
             g = df_evo.groupby("mes_num")["total_linea"].sum().to_dict()
             for i in range(1, 13):
                 vals[i - 1] = float(g.get(i, 0.0))
-
         fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=meses_labels,
-                y=vals,
-                mode="lines+markers",
-                line=dict(width=3),
-                fill="tozeroy",
-                name=f"Ingresos — {y_sel}",
-            )
-        )
-        fig.update_layout(
-            title=f"Evolución anual — {y_sel} (por mes)",
-            xaxis_title="Meses del año",
-            yaxis_title="Ingresos (CLP)",
-        )
+        fig.add_scatter(x=meses_labels, y=vals, mode="lines+markers", name=f"Ingresos — {y_sel}", fill="tozeroy")
+        fig.update_layout(title=f"Evolución anual — {y_sel} (por mes)",
+                          xaxis_title="Meses del año", yaxis_title="Ingresos (CLP)")
         st.plotly_chart(apply_dark_theme(fig), use_container_width=True)
 
     st.markdown("---")
-
-    # -------- Distribución de Ingresos (sobre el período puntual) ----------
-    st.markdown("### 💼 Distribución de Ingresos del período")
-    # Porcentajes desde session_state (o defaults)
-    pct_salary = st.session_state.get("pct_salary", 30)
-    pct_shop = st.session_state.get("pct_shop", 20)
-    pct_savings = st.session_state.get("pct_savings", 35)
-    pct_invest = st.session_state.get("pct_invest", 15)
-
-    if ingresos > 0:
-        v_sueldo = ingresos * pct_salary / 100
-        v_shop = ingresos * pct_shop / 100
-        v_ahorro = ingresos * pct_savings / 100
-        v_inv = ingresos * pct_invest / 100
-
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.metric("Total Ingresos del período", money(ingresos))
-            dist_df = pd.DataFrame(
-                [
-                    {"Categoría": "💼 Sueldo", "Porcentaje": f"{pct_salary}%", "Monto": money(v_sueldo)},
-                    {"Categoría": "🏪 Barbería", "Porcentaje": f"{pct_shop}%", "Monto": money(v_shop)},
-                    {"Categoría": "💰 Ahorro", "Porcentaje": f"{pct_savings}%", "Monto": money(v_ahorro)},
-                    {"Categoría": "📈 Inversión", "Porcentaje": f"{pct_invest}%", "Monto": money(v_inv)},
-                ]
-            )
-            st.dataframe(dist_df, use_container_width=True, hide_index=True)
-        with col2:
-            fig_dist = go.Figure(
-                data=[
-                    go.Pie(
-                        labels=["Sueldo", "Barbería", "Ahorro", "Inversión"],
-                        values=[v_sueldo, v_shop, v_ahorro, v_inv],
-                        hole=0.45,
-                        textinfo="label+percent",
-                    )
-                ]
-            )
-            fig_dist.update_layout(title=f"Distribución — {p_label}")
-            st.plotly_chart(apply_dark_theme(fig_dist), use_container_width=True)
-    else:
-        st.info("No hay ingresos en el período seleccionado.")
-
-    st.markdown("---")
-
-    # -------- Resumen de Servicios / Productos (período puntual) ----------
     st.markdown("### 📋 Resumen de Servicios y Productos")
     if not df_period.empty:
         resumen_items = (
@@ -1225,17 +1117,46 @@ elif page == "🧾 Registrar venta":
             st.info(f"Ticket ID: {visit_ticket_id[:8]}... ({len(seleccion)} líneas)")
 
 # =========
-# Finanzas
+# Finanzas (flujo de caja mejorado)
 # =========
 elif page == "💰 Finanzas":
     st.title("💰 Finanzas")
-    st.markdown(f"**Rango global:** {global_start} → {global_end}")
 
-    df_sales = get_df_sales(global_start, global_end)
-    df_exp = get_df_expenses(global_start, global_end)
+    # Selector de vista y fechas propias de finanzas
+    vista_f = st.radio("Vista", ["Diaria", "Semanal", "Mensual", "Anual"], horizontal=True, index=0, key="fin_vista")
 
-    total_ing = df_sales["total_linea"].sum() if not df_sales.empty else 0
-    total_gas = df_exp["monto"].sum() if not df_exp.empty else 0
+    if vista_f == "Diaria":
+        f_start = st.date_input("Desde", value=global_start, key="fin_d_start")
+        f_end = st.date_input("Hasta", value=global_end, key="fin_d_end")
+        freq = "D"
+        period_fmt = "%d/%m/%Y"
+    elif vista_f == "Semanal":
+        f_start = st.date_input("Desde (semana)", value=global_start, key="fin_w_start")
+        f_end = st.date_input("Hasta (semana)", value=global_end, key="fin_w_end")
+        freq = "W-MON"  # semanas que terminan el lunes siguiente (inicio lunes)
+        period_fmt = "Sem %W/%Y"
+    elif vista_f == "Mensual":
+        y = st.number_input("Año", min_value=2000, max_value=2100, value=global_start.year, step=1, key="fin_y_m")
+        f_start = date(y, 1, 1)
+        f_end = date(y, 12, 31)
+        freq = "M"
+        period_fmt = "%b %Y"
+    else:  # Anual
+        y1, y2 = st.columns(2)
+        with y1:
+            y_from = st.number_input("Desde año", min_value=2000, max_value=2100, value=global_start.year, step=1, key="fin_y_from")
+        with y2:
+            y_to = st.number_input("Hasta año", min_value=2000, max_value=2100, value=global_end.year, step=1, key="fin_y_to")
+        f_start = date(int(y_from), 1, 1)
+        f_end = date(int(y_to), 12, 31)
+        freq = "Y"
+        period_fmt = "%Y"
+
+    df_s = get_df_sales(f_start, f_end)
+    df_e = get_df_expenses(f_start, f_end)
+
+    total_ing = df_s["total_linea"].sum() if not df_s.empty else 0.0
+    total_gas = df_e["monto"].sum() if not df_e.empty else 0.0
     total_bal = total_ing - total_gas
 
     c1, c2, c3 = st.columns(3)
@@ -1243,8 +1164,70 @@ elif page == "💰 Finanzas":
     c2.metric("Gastos (rango)", money(total_gas))
     c3.metric("Balance (rango)", money(total_bal))
 
+    # Construir flujo por periodo
+    def group_cashflow(df_sales, df_exp, freq: str):
+        if df_sales.empty and df_exp.empty:
+            return pd.DataFrame(columns=["periodo", "ingresos", "gastos", "balance", "acumulado"])
+
+        s = pd.DataFrame()
+        if not df_sales.empty:
+            s = df_sales[["ts", "total_linea"]].copy()
+            s["monto"] = s["total_linea"].astype(float)
+            s["tipo"] = "ingreso"
+            s = s[["ts", "monto", "tipo"]]
+
+        e = pd.DataFrame()
+        if not df_exp.empty:
+            e = df_exp[["ts", "monto"]].copy()
+            e["monto"] = e["monto"].astype(float) * -1.0
+            e["tipo"] = "gasto"
+            e = e[["ts", "monto", "tipo"]]
+
+        comb = pd.concat([s, e], ignore_index=True) if not s.empty or not e.empty else pd.DataFrame(columns=["ts","monto","tipo"])
+        if comb.empty:
+            return pd.DataFrame(columns=["periodo", "ingresos", "gastos", "balance", "acumulado"])
+
+        comb["ts"] = pd.to_datetime(comb["ts"])
+        comb = comb.set_index("ts").sort_index()
+
+        grp = comb.groupby(pd.Grouper(freq=freq)).agg(
+            ingresos=("monto", lambda x: float(x[x > 0].sum())),
+            gastos=("monto", lambda x: float(-x[x < 0].sum())),
+            balance=("monto", "sum"),
+        ).reset_index()
+
+        grp["periodo"] = grp["ts"].dt.strftime(period_fmt)
+        grp["acumulado"] = grp["balance"].cumsum()
+        out = grp[["periodo", "ingresos", "gastos", "balance", "acumulado"]]
+        return out
+
+    flujo = group_cashflow(df_s, df_e, freq)
+
+    st.markdown("---")
+    st.markdown("### 🔁 Flujo de caja")
+    if flujo.empty:
+        st.info("No hay datos en el rango seleccionado.")
+    else:
+        st.dataframe(
+            pd.DataFrame({
+                "Periodo": flujo["periodo"],
+                "Ingresos": flujo["ingresos"].apply(money),
+                "Gastos": flujo["gastos"].apply(money),
+                "Balance": flujo["balance"].apply(money),
+                "Acumulado": flujo["acumulado"].apply(money),
+            }),
+            use_container_width=True, hide_index=True
+        )
+
+        fig_cf = go.Figure()
+        fig_cf.add_scatter(x=flujo["periodo"], y=flujo["ingresos"], mode="lines+markers", name="Ingresos")
+        fig_cf.add_scatter(x=flujo["periodo"], y=flujo["gastos"], mode="lines+markers", name="Gastos")
+        fig_cf.add_scatter(x=flujo["periodo"], y=flujo["balance"], mode="lines+markers", name="Balance")
+        fig_cf.update_layout(title=f"Flujo ({vista_f})", xaxis_title="Periodo", yaxis_title="CLP")
+        st.plotly_chart(apply_dark_theme(fig_cf), use_container_width=True)
+
 # =========
-# Clientes
+# Clientes (perfiles + periodicidad)
 # =========
 elif page == "👤 Clientes":
     st.title("👤 Gestión de Clientes")
@@ -1272,17 +1255,82 @@ elif page == "👤 Clientes":
         search = st.text_input("🔍 Buscar", placeholder="Nombre, teléfono o notas...")
         if search:
             clientes = [
-                c
-                for c in clientes
+                c for c in clientes
                 if search.lower() in c.name.lower()
                 or (c.phone and search.lower() in c.phone.lower())
                 or (c.notes and search.lower() in c.notes.lower())
             ]
+
+        def compute_periodicity(dates_list: list[date]):
+            dates_sorted = sorted(set(dates_list))
+            if len(dates_sorted) < 2:
+                return None
+            diffs = [(dates_sorted[i] - dates_sorted[i-1]).days for i in range(1, len(dates_sorted))]
+            if not diffs:
+                return None
+            avg = mean(diffs)
+            med = median(diffs)
+            try:
+                mode = Counter(diffs).most_common(1)[0][0]
+            except Exception:
+                mode = None
+            last_visit = dates_sorted[-1]
+            # recordatorio al 75% del intervalo típico (promedio)
+            remind_days = max(1, int(round(avg * 0.75)))
+            suggested_reminder = last_visit + timedelta(days=remind_days)
+            return {
+                "avg": avg, "med": med, "mode": mode,
+                "last": last_visit, "remind_days": remind_days,
+                "suggested_reminder": suggested_reminder
+            }
+
         for c in clientes:
             with st.expander(f"👤 {c.name}", expanded=False):
                 st.write(f"**Contacto:** {c.phone or '—'}")
                 st.write(f"**Notas:** {c.notes or '—'}")
                 st.write(f"**Desde:** {c.created_at.strftime('%d/%m/%Y') if c.created_at else '—'}")
+
+                visits = get_grouped_sales_by_client(c.id, None, None)
+                if not visits:
+                    st.info("Este cliente no tiene visitas registradas.")
+                    continue
+
+                # Fechas de visita + detalle
+                fechas = [v["fecha"] for v in visits]
+                st.markdown("#### 🗓️ Visitas")
+                # Tabla simple de visitas
+                rows = []
+                for v in visits:
+                    items_txt = ", ".join([f"{it['nombre']} (x{it['cantidad']})" for it in v["items"]])
+                    rows.append({
+                        "Fecha": v["fecha"].strftime("%d/%m/%Y"),
+                        "Hora": v["hora"],
+                        "Servicios/Productos": items_txt,
+                        "Total": money(v["total"])
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+                # Periodicidad
+                stats = compute_periodicity(fechas)
+                st.markdown("#### ⏱️ Periodicidad")
+                if not stats:
+                    st.info("Aún no hay suficientes visitas para calcular periodicidad (se requieren 2 o más).")
+                else:
+                    colp1, colp2, colp3 = st.columns(3)
+                    colp1.metric("Promedio entre visitas", f"{stats['avg']:.1f} días")
+                    colp2.metric("Mediana entre visitas", f"{stats['med']:.1f} días")
+                    colp3.metric("Más común (moda)", f"{stats['mode']} días" if stats['mode'] else "—")
+                    colp1, colp2 = st.columns(2)
+                    colp1.metric("Última visita", stats["last"].strftime("%d/%m/%Y"))
+                    colp2.metric("Sugerir recordar en", f"{stats['remind_days']} días (→ {stats['suggested_reminder'].strftime('%d/%m/%Y')})")
+
+                # Gráfico de visitas
+                ts_counts = pd.Series(1, index=pd.to_datetime([datetime.combine(f, dt.time()) for f in fechas]))
+                ts_counts = ts_counts.sort_index().resample("D").sum().fillna(0)
+                figv = go.Figure()
+                figv.add_bar(x=[d.strftime("%d/%m/%Y") for d in ts_counts.index.date], y=ts_counts.values, name="Visitas")
+                figv.update_layout(title="Visitas en el tiempo", xaxis_title="Fecha", yaxis_title="N° visitas")
+                st.plotly_chart(apply_dark_theme(figv), use_container_width=True)
 
 # =====
 # Items
@@ -1362,9 +1410,8 @@ elif page == "📜 Historial":
                         st.metric("Propina", money(v["propina_total"]))
 
                 st.markdown("---")
-                # ================== Editor de visita ==================
+                # Editor de visita
                 with st.expander("✏️ Editar visita", expanded=False):
-                    # Defaults:
                     d_default = v["fecha"]
                     h_default = datetime.strptime(v["hora"], "%H:%M").time()
                     cliente_default = "" if v["cliente"] == "(sin cliente)" else v["cliente"]
@@ -1382,9 +1429,7 @@ elif page == "📜 Historial":
                     new_tip = st.number_input("Propina total (CLP)", min_value=0, value=int(round(tip_default)), step=500, key=f"edit_tip_{ticket}_{idx}")
 
                     st.markdown("#### Ítems de la visita")
-                    # Mapa de líneas actuales por item_id para defaults
                     current_lines = {ln["servicio_id"]: ln for ln in v["items"]}
-
                     selected_lines = []
                     cols = st.columns(2)
                     for j, it in enumerate(items_catalog):
@@ -1409,7 +1454,6 @@ elif page == "📜 Historial":
                                     "discount": float(dsc),
                                 })
 
-                    # Preview
                     if selected_lines:
                         preview_rows = []
                         subtotal = 0.0
@@ -1437,7 +1481,7 @@ elif page == "📜 Historial":
                             st.info(f"Ticket ID: {new_ticket[:8]}…")
                             _safe_rerun()
 
-                # ================== Eliminar visita ==================
+                # Eliminar visita
                 with st.expander("🗑️ Eliminar visita", expanded=False):
                     st.warning("Esta acción elimina la visita completa. Escribe **BORRAR** para confirmar.")
                     conf = st.text_input("Confirmación", key=f"del_conf_{ticket}_{idx}")
@@ -1448,6 +1492,54 @@ elif page == "📜 Historial":
                             _safe_rerun()
                         else:
                             st.error("Escribe BORRAR para confirmar.")
+
+# =========
+# Análisis avanzado
+# =========
+elif page == "📈 Análisis":
+    st.title("📈 Análisis de demanda")
+
+    a_start = st.date_input("Desde", value=global_start, key="ana_from")
+    a_end = st.date_input("Hasta", value=global_end, key="ana_to")
+    df = get_df_sales(a_start, a_end)
+
+    if df.empty:
+        st.info("No hay datos en el rango seleccionado.")
+    else:
+        df["ts"] = pd.to_datetime(df["ts"])
+        df["weekday"] = df["ts"].dt.weekday  # Lunes=0
+        df["weekday_name"] = df["weekday"].map({
+            0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"
+        })
+
+        # Solo servicios para "cortes"
+        servicios = df[df["tipo"] == "service"].copy()
+        cortes_por_dia = servicios.groupby("weekday_name")["cantidad"].sum().reindex(
+            ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"], fill_value=0
+        )
+
+        st.markdown("### 💇‍♂️ Cortes por día de la semana (servicios)")
+        fig1 = go.Figure()
+        fig1.add_bar(x=cortes_por_dia.index, y=cortes_por_dia.values, name="Cortes (servicios)")
+        fig1.update_layout(xaxis_title="Día de la semana", yaxis_title="Cantidad")
+        st.plotly_chart(apply_dark_theme(fig1), use_container_width=True)
+
+        st.markdown("### 💰 Ingresos por día de la semana (todos los ítems)")
+        ingresos_por_dia = df.groupby("weekday_name")["total_linea"].sum().reindex(
+            ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"], fill_value=0.0
+        )
+        fig2 = go.Figure()
+        fig2.add_bar(x=ingresos_por_dia.index, y=ingresos_por_dia.values, name="Ingresos")
+        fig2.update_layout(xaxis_title="Día de la semana", yaxis_title="CLP")
+        st.plotly_chart(apply_dark_theme(fig2), use_container_width=True)
+
+        tabla = pd.DataFrame({
+            "Día": ingresos_por_dia.index,
+            "Cortes (servicios)": cortes_por_dia.values,
+            "Ingresos": ingresos_por_dia.values
+        })
+        tabla["Ingresos"] = tabla["Ingresos"].apply(money)
+        st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 # ===============
 # Configuración
